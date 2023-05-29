@@ -40,6 +40,24 @@ class EndPoint:
         # Get ?ReviewResult entity? OR 'JSON decoded result of ReviewResult' as output
         ReviewResult = self.rest_api.review(change_id, revision_id, review_input)
 
+    def put_draft(self, change_id, revision_id, comments):
+        """
+        TODO: function must handle both:
+          * Create Draft
+        https://gerrit-documentation.storage.googleapis.com/Documentation/3.3.0/rest-api-changes.html#create-draft
+        and
+          * Update Draft (if script sees, that it tries to create a comment atop
+            already existing one)
+        https://gerrit-documentation.storage.googleapis.com/Documentation/3.3.0/rest-api-changes.html#update-draft
+        TODO: in_reply_to can be used to answer in thread
+
+        :comments is an array of elements with type CommentInput
+        """
+        url = f"/changes/{change_id}/revisions/{revision_id}/drafts"
+
+        for comment in comments:
+            CommentInfo = self.rest_api.put(url, return_response=True, json=comment)
+
     def get_patch():
         # 'GET /changes/{change-id}/revisions/{revision-id}/patch'
         pass
@@ -67,6 +85,24 @@ def test_post_review(changes_ep, change_id, revision_id):
     )
 
 
+def test_put_draft(changes_ep, change_id, revision_id):
+    # see format here:
+    # https://gerrit-documentation.storage.googleapis.com/Documentation/3.3.0/rest-api-changes.html#comment-input
+    inline_comments = [
+        {
+            "path": "Makefile",
+            "line": 42,
+            "message": "line 42: inline comment from changes.py, posted as a draft",
+        },
+        {
+            "path": "Makefile",
+            "line": 43,
+            "message": "line 43: inline comment from changes.py, posted as a draft",
+        },
+    ]
+    changes_ep.put_draft(change_id, revision_id, inline_comments)
+
+
 def main():
     import argparse
     import utilpy.cfg.yamlmisc as yamlm
@@ -91,6 +127,7 @@ def main():
         type=str,
         help="""test-case name to launch:
             * post_review
+            * put_draft
             """,
     )
     args = ap.parse_args()
@@ -111,6 +148,9 @@ def main():
 
     if "post_review" in args.test_case:
         test_post_review(changes, change_id, revision_id)
+    elif "put_draft" in args.test_case:
+        revision_id = "6afbaf2e9538352d52018baab511b5d9153b554d"
+        test_put_draft(changes, change_id, revision_id)
 
 
 if __name__ == "__main__":
