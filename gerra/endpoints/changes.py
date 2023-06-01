@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import urllib
 from pygerrit2 import GerritReview
 
 
@@ -58,6 +59,64 @@ class EndPoint:
         for comment in comments:
             CommentInfo = self.rest_api.put(url, return_response=True, json=comment)
 
+    def __query(self, query_string):
+        return self.rest_api.get(f"/changes/?query={query_string}")
+
+    def query(self, query_string):
+        # let all characters be quoted in the encoded string by means of passing
+        # empty string into safe parameter (by default '/' is not quoted)
+        query_string = urllib.parse.quote(query_string, safe="")
+        return self.__query(query_string)
+
+    def get_change_numeric_id(self, review_url):
+        """
+        Returns numeric_id
+        """
+        parsed_url = urllib.parse.urlparse(review_url)
+        path_parts = parsed_url.path.split("/")
+        if "+" not in path_parts:
+            raise RuntimeError(
+                "Can't find path component '+', marking the following numeric ID"
+            )
+        idx = path_parts.index("+")
+        if idx + 1 >= len(path_parts):
+            raise RuntimeError(
+                "Out of path_parts (len:{}) access: index:{}".format(
+                    len(path_parts), idx + 1
+                )
+            )
+
+        return path_parts[idx + 1]
+
+    def get_change_info(self, review_url):
+        """
+        query() here returns list[of one item of ChangeInfo]
+        Returns dict ChangeInfo
+        """
+        numeric_id = self.get_change_numeric_id(review_url)
+
+        query_string = urllib.parse.quote(f"change:{numeric_id}", safe="")
+        change_info = self.__query(f"{query_string}&o=ALL_REVISIONS")[0]
+
+        _number = change_info["_number"]
+        if int(numeric_id) != _number:
+            raise RuntimeError(
+                f"numeric_id:{numeric_id} does not match ChangeInfo::_number:{_number}"
+            )
+        return change_info
+
+    def get_change_ids(self, review_url):
+        """
+
+        Return dict(ChangeID + latest revision_id)
+        """
+        change_info = self.get_change_info(review_url)
+
+        change_id = change_info["change_id"]
+        # get latest
+        revision_id = len(change_info["revisions"])
+        return {"change_id": change_id, "revision_id": revision_id}
+
     def get_patch():
         # 'GET /changes/{change-id}/revisions/{revision-id}/patch'
         pass
@@ -103,6 +162,14 @@ def test_put_draft(changes_ep, change_id, revision_id):
     changes_ep.put_draft(change_id, revision_id, inline_comments)
 
 
+def test_get_change_ids(changes_ep, gerrit_url):
+    from IPython import embed
+
+    ids = changes_ep.get_change_ids(gerrit_url)
+    # check in IPython interactive shell the returned values
+    embed()
+
+
 def main():
     import argparse
     import utilpy.cfg.yamlmisc as yamlm
@@ -122,12 +189,14 @@ def main():
     )
 
     ap.add_argument("--user", type=str, help="Gerrit user name", required=True)
+    ap.add_argument("--url", type=str, help="Gerrit review url", required=False)
     ap.add_argument(
         "--test-case",
         type=str,
         help="""test-case name to launch:
             * post_review
             * put_draft
+            * get_change_ids
             """,
     )
     args = ap.parse_args()
@@ -151,6 +220,8 @@ def main():
     elif "put_draft" in args.test_case:
         revision_id = "6afbaf2e9538352d52018baab511b5d9153b554d"
         test_put_draft(changes, change_id, revision_id)
+    elif "get_change_ids" in args.test_case:
+        test_get_change_ids(changes, args.url)
 
 
 if __name__ == "__main__":
