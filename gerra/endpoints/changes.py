@@ -76,7 +76,8 @@ class EndPoint:
         path_parts = parsed_url.path.split("/")
         if "+" not in path_parts:
             raise RuntimeError(
-                "Can't find path component '+', marking the following numeric ID"
+                "Can't find path component '+', usually preceding the "
+                "numeric ID inside URL. The broken URL: {}".format(review_url)
             )
         idx = path_parts.index("+")
         if idx + 1 >= len(path_parts):
