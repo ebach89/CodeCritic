@@ -373,7 +373,7 @@ def parse_args():
     ap.add_argument("-a", "--analyzer",
         help="Analyzer to be launched",
         choices=list(ANALYZERS_MAP.keys()) + ["all"],
-        default=list(ANALYZERS_MAP.keys()) + ["all"],
+        default=["all"],
         action="append"
     )
     ap.add_argument("-l", "--local",
