@@ -200,7 +200,11 @@ def run_cppcheck(commits, files_filter, lang):
     cppcheck = "cppcheck"
     if os.path.exists(f"{SCRIPT_DIR}/analyzers.yaml"):
         cfg = yamlm.load_config(f"{SCRIPT_DIR}/analyzers.yaml")
-        cppcheck = cfg['CPPCHECK']
+        try:
+            cppcheck = cfg['CPPCHECK']
+        except KeyError as ex:
+            # Preserve original name
+            pass
 
     cppcheck = local[cppcheck][
         "--quiet", "--enable=all", "--inconclusive", "-f",
