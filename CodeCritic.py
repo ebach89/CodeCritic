@@ -282,14 +282,89 @@ def run_cpplint(commits):
     pass
 
 def run_flake8(commits):
+    PY_FILES = [".py"]
+    files_filter = tuple(PY_FILES)
+
     print("run_flake8() called")
-    pass
+
+    flake8 = "flake8"
+    if os.path.exists(f"{SCRIPT_DIR}/analyzers.yaml"):
+        cfg = yamlm.load_config(f"{SCRIPT_DIR}/analyzers.yaml")
+        try:
+            if cfg is not None:
+                flake8 = cfg['FLAKE8']
+        except KeyError as ex:
+            # Preserve original name
+            pass
+
+    flake8 = local[flake8][
+        "--exit-zero",
+        "--format=%(path)s###%(row)d###%(code)s###%(text)s"]
+
+    for commit in commits:
+        print(f"\n=== Analyze: {commit['subject']}")
+        commit['report'] = {}
+
+        git("checkout", commit['git_hash'])
+        ret, out, err = flake8.run(filter_files(commit['files'],
+                                                files_filter),
+                                   retcode=None)
+
+        if ret != 0:
+            print("Review: {}".format(commit['url']))
+            print("\tSubject: {}".format(commit['subject']))
+            print(f"\t\t[flake8] failed with err:{ret}")
+            print(f"stderr:\n\t{err}")
+            print(f"stdout:\n\t{out}")
+            continue
+
+        # cppcheck (stderr), flake8 (stdout)!!!
+        if len(out) == 0:
+            print("Review: {}".format(commit['url']))
+            print("\tSubject: {}".format(commit['subject']))
+            print("\t\t[flake8] has NO problems.")
+            continue
+
+
+        # Each stderr line is an issue
+        report = {}
+        # "message" is printed not in-file (i.e. as Reply to whole patch)
+        # Uncomment line below, when you will be ready to reveal yourself
+        # as person, using Gerra & CodeCritic
+        #report["message"] = "[flake8] Some issues need to be fixed."
+        report["message"] = "I've found some issues"
+
+        report["comments"] = defaultdict(list)
+        for line in out.strip().split("\n"):
+            if len(line.strip()) == 0:
+                continue
+
+            afile, lineno, severity, err_msg = line.split("###")
+            # Such cases is possible:
+            # ######information###Cppcheck cannot find all the include files
+            if afile == "" or lineno == "":
+                continue
+
+            # Check git blame and insert only valid reports' lines for lines,
+            # touched by commit on review
+            if not is_report_in_commit(afile, lineno, commit['git_hash']):
+                continue
+
+            # Form proper data structure:
+            # https://gerrit-documentation.storage.googleapis.com/Documentation/3.3.0/rest-api-changes.html#comment-input
+            report['comments'][afile].append({
+                'path': afile,
+                'line': lineno,
+                'message': f"[{severity}] {err_msg}"
+            })
+
+        commit['report'].update(report)
 
 ANALYZERS_MAP = {
     "cppcheck_c": run_cppcheck_c,
     "cppcheck_cxx": run_cppcheck_cxx,
     ###"cpplint": run_cpplint,
-    ###"flake8": run_flake8
+    "flake8": run_flake8
 }
 
 def analyze(args, ch_api, commits):
