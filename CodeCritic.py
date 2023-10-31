@@ -252,7 +252,8 @@ def run_cppcheck(commits, files_filter, lang):
             afile, lineno, severity, err_msg = line.split("###")
             # Such cases is possible:
             # ######information###Cppcheck cannot find all the include files
-            if afile == "" or lineno == "":
+            # 'nofile###0###information###Cppcheck cannot find all the include files (use --check-config for details)'
+            if afile == "" or afile == "nofile" or lineno == "":
                 continue
 
             # Check git blame and insert only valid reports' lines for lines,
