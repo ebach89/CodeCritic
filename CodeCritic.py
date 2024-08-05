@@ -11,6 +11,7 @@ from IPython import embed
 from plumbum import local, ProcessExecutionError
 from pygerrit2 import GerritRestAPI, HTTPBasicAuth
 from urllib.parse import urlparse
+from requests.packages import urllib3
 
 GERRIT_SERVER_URL = ""
 SCRIPT_DIR = os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -472,6 +473,10 @@ def parse_args():
 def main():
     global GERRIT_URL_BASE
     args = parse_args();
+
+    if args.force_no_verify:
+        # Suppress only the InsecureRequestWarning from urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     auth = HTTPBasicAuth(args.user, args.password)
     restapi = GerritRestAPI(url=GERRIT_SERVER_URL, auth=auth,
