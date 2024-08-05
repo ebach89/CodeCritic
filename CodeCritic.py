@@ -462,6 +462,11 @@ def parse_args():
         default=False,
         action="store_true"
     )
+    ap.add_argument("--force_no_verify",
+        help=("Allow requests with SSL verification disabled"),
+        default=False,
+        action="store_true"
+    )
     return ap.parse_args()
 
 def main():
@@ -469,7 +474,8 @@ def main():
     args = parse_args();
 
     auth = HTTPBasicAuth(args.user, args.password)
-    restapi = GerritRestAPI(url=GERRIT_SERVER_URL, auth=auth)
+    restapi = GerritRestAPI(url=GERRIT_SERVER_URL, auth=auth,
+                            verify=not args.force_no_verify)
 
     ch_api = ch.EndPoint(restapi)
 
