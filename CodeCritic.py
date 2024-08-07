@@ -49,6 +49,7 @@ def get_relation_chain(ch_api, change_info):
     remote_path = parsed_url.path
     if remote_path[0] != '/':
         print("Path (as part of URL) on remote server does not start with '/'")
+        print("Analyze printout of 'git remote -v':\n{}". format(git("remote", "-v")))
         raise
     repo = remote_path[1:]
     topic = change_info['topic']
