@@ -456,7 +456,7 @@ def run_shellcheck(commits):
             pass
 
     shellcheck = local[shellcheck][
-        "--format=gcc",
+        "--color=never",
         "--exclude=SC1091",
     ]
 
@@ -496,16 +496,19 @@ def run_shellcheck(commits):
         report["message"] = "I've found some issues"
 
         report["comments"] = defaultdict(list)
-        for line in out.strip().split("\n"):
+        # Filter-out the section 'For more information:' at the end of the report
+        out = out.strip().split("For more information:")[0]
+        # The lines 'In script.sh line 1:' are delimited by "\n\n\n"
+        for line in out.strip().split("\n\n\n"):
             if len(line.strip()) == 0:
                 continue
 
-            slices = line.split(" ")
-            afile_lineno = slices[0]
-            severity = slices[1]
-            err_msg = " ".join(slices[2:])
-            # Split the line `a.sh:8:11:` into 3 elements (last item is '11:')
-            afile, lineno, _ = afile_lineno.split(":", maxsplit=2)
+            # "In script.sh line 1:\n"
+            # "blabla \n -- SC2148 (error): Add a shebang."
+            afile_lineno, err_msg = line.split(":\n", maxsplit=1)
+            # ['In', 'script.sh', 'line', '1']
+            afile = afile_lineno.split()[1]
+            lineno = afile_lineno.split()[3]
             # Such cases is possible:
             # ######information###Cppcheck cannot find all the include files
             if afile == "" or lineno == "":
@@ -521,7 +524,7 @@ def run_shellcheck(commits):
             report['comments'][afile].append({
                 'path': afile,
                 'line': lineno,
-                'message': f"{severity} {err_msg}"
+                'message': f"```\n{err_msg}\n```"
             })
 
         commit['report'].update(report)
