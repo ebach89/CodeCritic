@@ -440,12 +440,100 @@ def run_codespell(commits):
 
         commit['report'].update(report)
 
+
+def run_shellcheck(commits):
+    SH_FILES = [".sh"]
+    files_filter = tuple(SH_FILES)
+
+    shellcheck = "shellcheck"
+    if os.path.exists(f"{SCRIPT_DIR}/analyzers.yaml"):
+        cfg = yamlm.load_config(f"{SCRIPT_DIR}/analyzers.yaml")
+        try:
+            if cfg is not None:
+                shellcheck = cfg['SHELLCHECK']
+        except KeyError as ex:
+            # Preserve original name
+            pass
+
+    shellcheck = local[shellcheck][
+        "--format=gcc",
+        "--exclude=SC1091",
+    ]
+
+    for commit in commits:
+        print(f"\n=== Analyze: {commit['subject']}")
+        commit['report'] = {}
+
+        git("checkout", commit['git_hash'])
+        ret, out, err = shellcheck.run(filter_files(commit['files'],
+                                                files_filter),
+                                   retcode=None)
+
+        # 0 - no bugs found
+        # 1 - bugs in script found
+        # Catch possible rare caces
+        if ret != 0 and ret != 1:
+            print("Review: {}".format(commit['url']))
+            print("\tSubject: {}".format(commit['subject']))
+            print(f"\t\t[shellcheck] failed with err:{ret}")
+            print(f"stderr:\n\t{err}")
+            print(f"stdout:\n\t{out}")
+            continue
+
+        if len(out) == 0:
+            print("Review: {}".format(commit['url']))
+            print("\tSubject: {}".format(commit['subject']))
+            print("\t\t[shellcheck] has NO problems.")
+            continue
+
+
+        # Each stderr line is an issue
+        report = {}
+        # "message" is printed not in-file (i.e. as Reply to whole patch)
+        # Uncomment line below, when you will be ready to reveal yourself
+        # as person, using Gerra & CodeCritic
+        #report["message"] = "[shellcheck] Some issues need to be fixed."
+        report["message"] = "I've found some issues"
+
+        report["comments"] = defaultdict(list)
+        for line in out.strip().split("\n"):
+            if len(line.strip()) == 0:
+                continue
+
+            slices = line.split(" ")
+            afile_lineno = slices[0]
+            severity = slices[1]
+            err_msg = " ".join(slices[2:])
+            # Split the line `a.sh:8:11:` into 3 elements (last item is '11:')
+            afile, lineno, _ = afile_lineno.split(":", maxsplit=2)
+            # Such cases is possible:
+            # ######information###Cppcheck cannot find all the include files
+            if afile == "" or lineno == "":
+                continue
+
+            # Check git blame and insert only valid reports' lines for lines,
+            # touched by commit on review
+            if not is_report_in_commit(afile, lineno, commit['git_hash']):
+                continue
+
+            # Form proper data structure:
+            # https://gerrit-documentation.storage.googleapis.com/Documentation/3.3.0/rest-api-changes.html#comment-input
+            report['comments'][afile].append({
+                'path': afile,
+                'line': lineno,
+                'message': f"{severity} {err_msg}"
+            })
+
+        commit['report'].update(report)
+
+
 ANALYZERS_MAP = {
     "cppcheck_c": run_cppcheck_c,
     "cppcheck_cxx": run_cppcheck_cxx,
     ###"cpplint": run_cpplint,
     "flake8": run_flake8,
     "codespell": run_codespell,
+    "shellcheck": run_shellcheck,
 }
 
 def analyze(args, ch_api, commits):
