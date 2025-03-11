@@ -363,6 +363,75 @@ def run_flake8(commits):
         commit['report'].update(report)
 
 
+def run_kernel_doc(commits):
+    print("run_kernel_doc() called")
+
+    kernel_doc = "./scripts/kernel-doc"
+    if os.path.exists(f"{SCRIPT_DIR}/analyzers.yaml"):
+        cfg = yamlm.load_config(f"{SCRIPT_DIR}/analyzers.yaml")
+        try:
+            if cfg is not None:
+                kernel_doc = cfg['KERNEL_DOC']
+        except KeyError as ex:
+            # Preserve original name
+            pass
+
+    kernel_doc = local[kernel_doc]["-v", "-none"]
+
+    for commit in commits:
+        print(f"\n=== Analyze: {commit['subject']}")
+        commit['report'] = {}
+
+        git("checkout", commit['git_hash'])
+        ret, out, err = kernel_doc.run(commit['files'],
+                                       retcode=None)
+
+        if ret != 0:
+            print("Review: {}".format(commit['url']))
+            print("\tSubject: {}".format(commit['subject']))
+            print(f"\t\t[kernel-doc] failed with err:{ret}")
+            print(f"stderr:\n\t{err}")
+            print(f"stdout:\n\t{out}")
+            continue
+
+        if len(err) == 0:
+            print("Review: {}".format(commit['url']))
+            print("\tSubject: {}".format(commit['subject']))
+            print("\t\t[kernel-doc] has NO problems.")
+            continue
+
+
+        # Each stdout line is an issue
+        report = {}
+        # "message" is printed not in-file (i.e. as Reply to whole patch)
+        # Uncomment line below, when you will be ready to reveal yourself
+        # as person, using Gerra & CodeCritic
+        #report["message"] = "[kernel-doc] Some issues need to be fixed."
+        report["message"] = "I've found some issues"
+
+        report["comments"] = defaultdict(list)
+        for line in err.strip().split("\n"):
+            if len(line.strip()) == 0:
+                continue
+
+            afile, lineno, severity, err_msg = line.split(":", maxsplit=3)
+
+            # Check git blame and insert only valid reports' lines for lines,
+            # touched by commit on review
+            if not is_report_in_commit(afile, lineno, commit['git_hash']):
+                continue
+
+            # Form proper data structure:
+            # https://gerrit-documentation.storage.googleapis.com/Documentation/3.3.0/rest-api-changes.html#comment-input
+            report['comments'][afile].append({
+                'path': afile,
+                'line': lineno,
+                'message': f"[{severity}]: {err_msg}"
+            })
+
+        commit['report'].update(report)
+
+
 def run_codespell(commits):
     print("run_codespell() called")
 
@@ -537,6 +606,7 @@ ANALYZERS_MAP = {
     "flake8": run_flake8,
     "codespell": run_codespell,
     "shellcheck": run_shellcheck,
+    "kernel_doc": run_kernel_doc,
 }
 
 def analyze(args, ch_api, commits):
