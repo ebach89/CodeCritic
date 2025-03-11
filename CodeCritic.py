@@ -410,23 +410,60 @@ def run_kernel_doc(commits):
         report["message"] = "I've found some issues"
 
         report["comments"] = defaultdict(list)
-        for line in err.strip().split("\n"):
+
+        # convert the list of lines into an iterator (lines) for further usage
+        # of next()
+        lines = iter(err.strip().split("\n"))
+        for line in lines:
             if len(line.strip()) == 0:
                 continue
 
+            # Filter-out lines concerning deleted files:
+            #   'Error: Cannot open file deleted/file/displayed/in/git/name.h'
+            if not ("warning:" in line or "error:" in line):
+                continue
+
             afile, lineno, severity, err_msg = line.split(":", maxsplit=3)
+
+            # filter-out such non-informative lines in report:
+            #   common/log.c:198: info: Scanning doc for log_dispatch
+            if "info" in severity:
+                continue
+
+            # Multi-line Handling:
+            # after parsing the initial line, we peek at subsequent lines.
+            # * if the next line starts with whitespace (indicating
+            #   continuation), it's appended to the current message.
+            # * If not, it's put back into the iterator for the next iteration.
+            additional_lines = []
+            while True:
+                try:
+                    next_line = next(lines)
+                    if next_line.startswith(" "):
+                        additional_lines.append(next_line)
+                    else:
+                        # Next line is a new warning - reconstruct the iterator
+                        lines = (aline for aline in [next_line] + list(lines))
+                        break
+                except StopIteration:
+                    break  # End of lines
+
+            # Combine additional lines if any
+            if additional_lines:
+                err_msg += "\n" + "\n".join(additional_lines)
 
             # Check git blame and insert only valid reports' lines for lines,
             # touched by commit on review
             if not is_report_in_commit(afile, lineno, commit['git_hash']):
                 continue
 
+
             # Form proper data structure:
             # https://gerrit-documentation.storage.googleapis.com/Documentation/3.3.0/rest-api-changes.html#comment-input
             report['comments'][afile].append({
                 'path': afile,
                 'line': lineno,
-                'message': f"[{severity}]: {err_msg}"
+                'message': f"```\n[{severity}]: {err_msg}\n```"
             })
 
         commit['report'].update(report)
