@@ -200,6 +200,13 @@ def parse_cppcheck_output(report, commit, out, err):
         if len(line.strip()) == 0:
             continue
 
+        # Filter out such rare case:
+        # line:include/linux/compiler-gcc.h###0###information###This file is \
+        #       not analyzed. Cppcheck failed to extract a valid \
+        #       configuration. Use -v for more details.
+        if "Cppcheck failed to extract a valid configuration" in line:
+            continue
+
         afile, lineno, severity, err_msg = line.split("###")
         # Such cases is possible:
         # ######information###Cppcheck cannot find all the include files
